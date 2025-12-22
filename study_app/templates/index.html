@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Study Task Manager</title>
+</head>
+<body>
+    <h1>学習記録</h1>
+
+    <form method="POST">
+        <textarea name="content" rows="5" cols="40" placeholder="今日の学習内容を入力"></textarea><br>
+        <button type="submit">保存</button>
+    </form>
+
+<h2>忘却防止：復習すべき記録</h2>
+
+<h3>1日前</h3>
+{% if forget_1 %}
+    {% for item in forget_1 %}
+        <p>{{ item.date }} : {{ item.text }}</p><hr>
+    {% endfor %}
+{% else %}
+    <p>該当なし</p>
+{% endif %}
+
+<h3>3日前</h3>
+{% if forget_3 %}
+    {% for item in forget_3 %}
+        <p>{{ item.date }} : {{ item.text }}</p><hr>
+    {% endfor %}
+{% else %}
+    <p>該当なし</p>
+{% endif %}
+
+<h3>1週間前（7日前）</h3>
+{% if forget_7 %}
+    {% for item in forget_7 %}
+        <p>{{ item.date }} : {{ item.text }}</p><hr>
+    {% endfor %}
+{% else %}
+    <p>該当なし</p>
+{% endif %}
+
+<h3>1か月前（30日前）</h3>
+{% if forget_30 %}
+    {% for item in forget_30 %}
+        <p>{{ item.date }} : {{ item.text }}</p><hr>
+    {% endfor %}
+{% else %}
+    <p>該当なし</p>
+{% endif %}
+
+<h2>記録一覧</h2>
+{% for item in logs %}
+    <p>{{ item.date }} : {{ item.text }}</p>
+    <hr>
+{% endfor %}
+
+<a href="/search">検索ページへ</a>
+
+</body>
+</html>

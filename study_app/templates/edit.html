@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head><title>記録編集</title></head>
+<body>
+<h1>記録編集: {{ entry.date }}</h1>
+
+<h1>記録編集</h1>
+
+<form method="post" action="/update/{{ entry.date }}">
+    <label>日付：</label>
+    <input type="date" name="date" value="{{ entry.date }}">
+    <br><br>
+
+    <label>内容：</label><br>
+    <textarea name="task" rows="5" cols="40">{{ entry.text }}</textarea>
+    <br><br>
+
+    <button type="submit">更新</button>
+</form>
+
+<p><a href="/search">← 検索ページへ戻る</a></p>
+
+</body>
+</html>
