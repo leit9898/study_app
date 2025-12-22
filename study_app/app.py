@@ -9,7 +9,7 @@ from flask_login import (
     login_required,
     UserMixin
 )
-from werkzeug.security import check_password_hash
+from werkzeug.security import (check_password_hash, generate_password_hash)
 
 
 
@@ -30,6 +30,9 @@ class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
+    
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
 
 class StudyLog(db.Model):
     __tablename__ = "study_logs"
@@ -73,7 +76,12 @@ def login():
 @login_required
 def logout():
     logout_user()
-    return redirect(url_for("login"))
+    return redirect(url_for("logged_out"))
+
+@app.route("/logged_out")
+@login_required
+def logged_out():
+    return render_template("logged_out.html")
 
 
 
@@ -168,7 +176,6 @@ def update(log_id):
     db.session.commit()
     return redirect("/search")
 
-from werkzeug.security import generate_password_hash
 
 def create_admin_user():
     if User.query.count() == 0:
@@ -187,7 +194,8 @@ with app.app_context():
 
 
 if __name__ == "__main__":
-    app.run()
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
 
 
 
