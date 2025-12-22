@@ -12,8 +12,8 @@ from flask_login import (
 from werkzeug.security import check_password_hash
 
 
-app = Flask(__name__)
 
+app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY")
 
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
@@ -54,9 +54,13 @@ def login():
         username = request.form.get("username")
         password = request.form.get("password")
 
+        if not username or not password:
+            flash("ユーザー名とパスワードを入力してください")
+            return render_template("login.html")
+    
         user = User.query.filter_by(username=username).first()
 
-        if user and user.check_password(request.form["password"]):
+        if user and user.check_password(password):
             login_user(user)
             return redirect(url_for("index"))
         else:
@@ -168,10 +172,14 @@ from werkzeug.security import generate_password_hash
 
 def create_admin_user():
     if User.query.count() == 0:
-        admin = User(username=os.environ["ADMIN_USERNAME"])
-        admin.password_hash = generate_password_hash(os.environ["ADMIN_PASSWORD"])
+        username = os.environ.get("ADMIN_USERNAME", "admin")      # デフォルト値を用意
+        password = os.environ.get("ADMIN_PASSWORD", "password")   # デフォルト値を用意
+
+        admin = User(username=username)
+        admin.password_hash = generate_password_hash(password)
         db.session.add(admin)
         db.session.commit()
+        print(f"Admin user '{username}' を作成しました。")
 
 with app.app_context():
     db.create_all()
