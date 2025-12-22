@@ -1,47 +1,100 @@
-import json
 from datetime import date, datetime, timedelta
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, redirect, url_for, flash
+from flask_sqlalchemy import SQLAlchemy
+import os
+from flask_login import (
+    LoginManager,
+    login_user,
+    logout_user,
+    login_required,
+    UserMixin
+)
+from werkzeug.security import check_password_hash
+
 
 app = Flask(__name__)
 
-DATA_FILE = "logs.json"
+app.secret_key = os.environ.get("SECRET_KEY")
 
-def load_logs():
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return []
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
+    "DATABASE_URL", "sqlite:///logs.db"
+)
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-def save_logs(logs):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(logs, f, ensure_ascii=False, indent=2)
+db = SQLAlchemy(app)
 
-def filter_logs_by_days(logs, days):
-    target_date = date.today() - timedelta(days=days)
-    result = []
-    for log in logs:
-        log_date = datetime.strptime(log["date"], "%Y-%m-%d").date()
-        if log_date == target_date:
-            result.append(log)
-    return result
+
+class User(db.Model, UserMixin):
+    __tablename__ = "users"
+
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(50), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+
+class StudyLog(db.Model):
+    __tablename__ = "study_logs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, nullable=False)
+    text = db.Column(db.Text, nullable=False)
+
+
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+
+        user = User.query.filter_by(username=username).first()
+
+        if user and user.check_password(request.form["password"]):
+            login_user(user)
+            return redirect(url_for("index"))
+        else:
+            flash("ユーザー名かパスワードが間違っています")
+
+    return render_template("login.html")
+
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for("login"))
+
+
+
+
 
 @app.route("/", methods=["GET", "POST"])
+@login_required
 def index():
-    logs = load_logs()
 
     # 保存処理
     if request.method == "POST":
         text = request.form["content"]
         if text.strip():
-            logs.append({"date": str(date.today()), "text": text})
-            save_logs(logs)
+            log = StudyLog(date=date.today(), text=text)
+            db.session.add(log)
+            db.session.commit()
 
-    # 忘却防止データ
-    forget_1 = filter_logs_by_days(logs, 1)
-    forget_3 = filter_logs_by_days(logs, 3)
-    forget_7 = filter_logs_by_days(logs, 7)
-    forget_30 = filter_logs_by_days(logs, 30)
+    today = date.today()
+
+    forget_1 = StudyLog.query.filter_by(date=today - timedelta(days=1)).all()
+    forget_3 = StudyLog.query.filter_by(date=today - timedelta(days=3)).all()
+    forget_7 = StudyLog.query.filter_by(date=today - timedelta(days=7)).all()
+    forget_30 = StudyLog.query.filter_by(date=today - timedelta(days=30)).all()        
+
+    logs = StudyLog.query.order_by(StudyLog.date.desc()).all()
 
     return render_template(
         "index.html",
@@ -49,7 +102,7 @@ def index():
         forget_1=forget_1,
         forget_3=forget_3,
         forget_7=forget_7,
-        forget_30=forget_30
+        forget_30=forget_30,
     )
 
 
@@ -58,50 +111,75 @@ from flask import Flask, render_template, request, redirect
 # --- 既存の app, load_data, save_data はそのまま ---
 
 @app.route("/search", methods=["GET", "POST"])
+@login_required
 def search():
-    data = load_logs()
     results = []
 
     if request.method == "POST":
-        date_query = request.form.get("date")
-        keyword = request.form.get("keyword", "").lower()
+        date_str = request.form.get("date")
+        keyword = request.form.get("keyword", "").strip()
 
-        for entry in data:
-            match_date = (date_query == "" or entry["date"] == date_query)
-            match_keyword = (keyword == "" or keyword in entry["text"].lower())
+        query = StudyLog.query
 
-            if match_date and match_keyword:
-                results.append(entry)
+        if date_str:
+            query = query.filter(
+                StudyLog.date == datetime.strptime(date_str, "%Y-%m-%d").date()
+            )
+        if keyword:
+            query = query.filter(StudyLog.text.contains(keyword))
+
+
+        results = query.order_by(StudyLog.date.desc()).all()
 
     return render_template("search.html", results=results)
 
-@app.route("/delete/<entry_date>", methods=["POST"])
-def delete(entry_date):
-    data = load_logs()
-    data = [d for d in data if d["date"] != entry_date]
-    save_logs(data)
+@app.route("/delete/<int:log_id>", methods=["POST"])
+@login_required
+def delete(log_id):
+    log = StudyLog.query.get_or_404(log_id)
+    db.session.delete(log)
+    db.session.commit()
     return redirect("/search")
 
-@app.route("/edit/<entry_date>")
-def edit(entry_date):
-    data = load_logs()
-    entry = next((d for d in data if d["date"] == entry_date), None)
-    return render_template("edit.html", entry=entry)
+@app.route("/edit/<int:log_id>")
+@login_required
+def edit(log_id):
+    log = StudyLog.query.get_or_404(log_id)
+    return render_template("edit.html", entry=log)
 
-@app.route("/update/<entry_date>", methods=["POST"])
-def update(entry_date):
-    data = load_logs()
-    new_date = request.form.get("date")    # ★追加
-    new_task = request.form.get("task")    # ★内容
+@app.route("/update/<int:log_id>", methods=["POST"])
+@login_required
+def update(log_id):
+    log = StudyLog.query.get_or_404(log_id)
 
+    date_str = request.form.get("date")
+    text = request.form.get("text")
 
-    for d in data:
-        if d["date"] == entry_date:
-            d["date"] = new_date
-            d["task"] = request.form.get("task")
-    save_logs(data)
+    if date_str:
+       log.date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    if text:   
+       log.text = text
+
+    
+    db.session.commit()
     return redirect("/search")
+
+from werkzeug.security import generate_password_hash
+
+def create_admin_user():
+    if User.query.count() == 0:
+        admin = User(username=os.environ["ADMIN_USERNAME"])
+        admin.password_hash = generate_password_hash(os.environ["ADMIN_PASSWORD"])
+        db.session.add(admin)
+        db.session.commit()
+
+with app.app_context():
+    db.create_all()
+    create_admin_user()
+
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run()
+
+
 

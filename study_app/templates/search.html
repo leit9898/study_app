@@ -18,17 +18,17 @@
 
 <h2>検索結果</h2>
 {% for r in results %}
-  <div>
-      <p>日付: {{ r.date }}<br>
-         内容: {{ r.text }}</p>
+  <p>
+    {{ r.date }} : {{ r.text }}
+  </p>
 
-      <form action="/delete/{{ r.date }}" method="post" style="display:inline;">
-          <button>削除</button>
-      </form>
+  <form action="/delete/{{ r.id }}" method="post" style="display:inline;">
+    <button type="submit">削除</button>
+  </form>
 
-      <a href="/edit/{{ r.date }}">編集</a>
-  </div>
+  <a href="/edit/{{ r.id }}">編集</a>
   <hr>
 {% endfor %}
+
 </body>
 </html>
