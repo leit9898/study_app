@@ -33,6 +33,17 @@ class User(db.Model, UserMixin):
     
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+# 中間テーブル（多対多）    
+studylog_tags = db.Table(
+    "studylog_tags",
+    db.Column("studylog_id", db.Integer, db.ForeignKey("study_logs.id")),
+    db.Column("tag_id", db.Integer, db.ForeignKey("tags.id")),
+)
+
+class Tag(db.Model):
+    __tablename__ = "tags"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(30), unique=True, nullable=False)
 
 class StudyLog(db.Model):
     __tablename__ = "study_logs"
@@ -40,11 +51,19 @@ class StudyLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     date = db.Column(db.Date, nullable=False)
     text = db.Column(db.Text, nullable=False)
+    tags = db.relationship(
+        "Tag",
+        secondary=studylog_tags,
+        backref="logs"
+    )
 
 
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
+
+# 中間テーブル（多対多）
+
 
 
 @login_manager.user_loader
@@ -94,8 +113,17 @@ def index():
     # 保存処理
     if request.method == "POST":
         text = request.form["content"]
+        tag_str = request.form.get("tags", "")
         if text.strip():
             log = StudyLog(date=date.today(), text=text)
+            tag_names = [t.strip() for t in tag_str.split(",") if t.strip()]
+            for name in tag_names:
+                tag = Tag.query.filter_by(name=name).first()
+                if not tag:
+                    tag = Tag(name=name)
+                    db.session.add(tag)
+                log.tags.append(tag)
+
             db.session.add(log)
             db.session.commit()
 
@@ -130,6 +158,7 @@ def search():
     if request.method == "POST":
         date_str = request.form.get("date")
         keyword = request.form.get("keyword", "").strip()
+        tag_name = request.form.get("tag", "").strip()
 
         query = StudyLog.query
 
@@ -139,6 +168,10 @@ def search():
             )
         if keyword:
             query = query.filter(StudyLog.text.contains(keyword))
+
+        if tag_name:
+            query = query.join(StudyLog.tags).filter(Tag.name == tag_name)
+   
 
 
         results = query.order_by(StudyLog.date.desc()).all()
