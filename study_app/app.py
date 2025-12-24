@@ -134,11 +134,35 @@ def index():
     forget_7 = StudyLog.query.filter_by(date=today - timedelta(days=7)).all()
     forget_30 = StudyLog.query.filter_by(date=today - timedelta(days=30)).all()        
 
-    logs = StudyLog.query.order_by(StudyLog.date.desc()).all()
+    logs = (
+    StudyLog.query
+    .order_by(StudyLog.date.desc())
+    .limit(50)
+    .all()
+    )
+
+    page = request.args.get("page", 1, type=int)
+
+    pagination = StudyLog.query.order_by(
+      StudyLog.date.desc()
+    ).paginate(page=page, per_page=20)
+
+    logs = pagination.items
+
+    page = request.args.get("page", 1, type=int)
+
+    pagination = StudyLog.query.order_by(
+    StudyLog.date.desc()
+    ).paginate(page=page, per_page=20)
+
+    logs = pagination.items
+
+
 
     return render_template(
         "index.html",
         logs=logs,
+        pagination=pagination,
         forget_1=forget_1,
         forget_3=forget_3,
         forget_7=forget_7,
@@ -150,33 +174,29 @@ from flask import Flask, render_template, request, redirect
 
 # --- 既存の app, load_data, save_data はそのまま ---
 
-@app.route("/search", methods=["GET", "POST"])
+@app.route("/search", methods=["GET"])
 @login_required
 def search():
-    results = []
+    date_str = request.args.get("date")
+    keyword = request.args.get("keyword", "").strip()
+    tag_name = request.args.get("tag", "").strip()
+    page = request.args.get("page", 1, type=int)
 
-    if request.method == "POST":
-        date_str = request.form.get("date")
-        keyword = request.form.get("keyword", "").strip()
-        tag_name = request.form.get("tag", "").strip()
+    query = StudyLog.query
 
-        query = StudyLog.query
-
-        if date_str:
+    if date_str:
             query = query.filter(
                 StudyLog.date == datetime.strptime(date_str, "%Y-%m-%d").date()
             )
-        if keyword:
+    if keyword:
             query = query.filter(StudyLog.text.contains(keyword))
 
-        if tag_name:
+    if tag_name:
             query = query.join(StudyLog.tags).filter(Tag.name == tag_name)
    
+    pagination = query.order_by(StudyLog.date.desc()).paginate(page=page, per_page=10)
 
-
-        results = query.order_by(StudyLog.date.desc()).all()
-
-    return render_template("search.html", results=results)
+    return render_template("search.html", results=pagination.items, pagination=pagination)
 
 @app.route("/delete/<int:log_id>", methods=["POST"])
 @login_required
@@ -184,7 +204,12 @@ def delete(log_id):
     log = StudyLog.query.get_or_404(log_id)
     db.session.delete(log)
     db.session.commit()
-    return redirect("/search")
+    return redirect(url_for(
+        "search",
+        tag=request.args.get("tag"),
+        keyword=request.args.get("keyword"),
+        date=request.args.get("date"),
+    ))
 
 @app.route("/edit/<int:log_id>")
 @login_required

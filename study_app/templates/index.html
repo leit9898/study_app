@@ -73,6 +73,16 @@
     <hr>
 {% endfor %}
 
+<div>
+{% if pagination.has_prev %}
+  <a href="?page={{ pagination.prev_num }}">前</a>
+{% endif %}
+
+{% if pagination.has_next %}
+  <a href="?page={{ pagination.next_num }}">次</a>
+{% endif %}
+</div>
+
 <a href="/search">検索ページへ</a>
 <p><a href="{{ url_for('logout') }}">ログアウト</a></p>
 
