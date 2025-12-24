@@ -10,6 +10,8 @@ from flask_login import (
     UserMixin
 )
 from werkzeug.security import (check_password_hash, generate_password_hash)
+from flask import Flask, render_template, request, redirect
+from sqlalchemy import or_
 
 
 
@@ -44,12 +46,15 @@ class Tag(db.Model):
     __tablename__ = "tags"
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(30), unique=True, nullable=False)
+    tag_type = db.Column(db.String(20), nullable=False) 
+
 
 class StudyLog(db.Model):
     __tablename__ = "study_logs"
 
     id = db.Column(db.Integer, primary_key=True)
     date = db.Column(db.Date, nullable=False)
+    title = db.Column(db.String(100), nullable=False) 
     text = db.Column(db.Text, nullable=False)
     tags = db.relationship(
         "Tag",
@@ -64,12 +69,12 @@ login_manager.login_view = "login"
 
 # 中間テーブル（多対多）
 
-
-
+#ユーザロード
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+#ログイン処理
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -90,7 +95,7 @@ def login():
 
     return render_template("login.html")
 
-
+#ログアウト処理
 @app.route("/logout")
 @login_required
 def logout():
@@ -102,30 +107,35 @@ def logout():
 def logged_out():
     return render_template("logged_out.html")
 
-
-
-
-
+# メインページ
 @app.route("/", methods=["GET", "POST"])
 @login_required
 def index():
 
     # 保存処理
     if request.method == "POST":
+        title = request.form.get("title")
         text = request.form["content"]
-        tag_str = request.form.get("tags", "")
-        if text.strip():
-            log = StudyLog(date=date.today(), text=text)
-            tag_names = [t.strip() for t in tag_str.split(",") if t.strip()]
-            for name in tag_names:
-                tag = Tag.query.filter_by(name=name).first()
-                if not tag:
-                    tag = Tag(name=name)
-                    db.session.add(tag)
-                log.tags.append(tag)
+        tag_ids = request.form.getlist("tags")
+        if title and text:
+            log = StudyLog(
+                date=date.today(),
+                title=title,
+                text=text
+            )
+
+            for tag_id in tag_ids:
+                tag = Tag.query.get(int(tag_id))
+                if tag:
+                    log.tags.append(tag)
+
 
             db.session.add(log)
             db.session.commit()
+  
+    category_tags = Tag.query.filter_by(tag_type="category").order_by(Tag.name).all()
+    subject_tags = Tag.query.filter_by(tag_type="subject").order_by(Tag.name).all()
+
 
     today = date.today()
 
@@ -134,46 +144,63 @@ def index():
     forget_7 = StudyLog.query.filter_by(date=today - timedelta(days=7)).all()
     forget_30 = StudyLog.query.filter_by(date=today - timedelta(days=30)).all()        
 
-    logs = (
-    StudyLog.query
-    .order_by(StudyLog.date.desc())
-    .limit(50)
-    .all()
-    )
-
-    page = request.args.get("page", 1, type=int)
-
-    pagination = StudyLog.query.order_by(
-      StudyLog.date.desc()
-    ).paginate(page=page, per_page=20)
-
-    logs = pagination.items
-
-    page = request.args.get("page", 1, type=int)
-
-    pagination = StudyLog.query.order_by(
-    StudyLog.date.desc()
-    ).paginate(page=page, per_page=20)
-
-    logs = pagination.items
-
 
 
     return render_template(
         "index.html",
-        logs=logs,
-        pagination=pagination,
+        category_tags=category_tags,
+        subject_tags=subject_tags,
         forget_1=forget_1,
         forget_3=forget_3,
         forget_7=forget_7,
         forget_30=forget_30,
     )
 
+# タグ管理
+@app.route("/tags")
+@login_required
+def tag_manage():
+    category_tags = Tag.query.filter_by(tag_type="category").order_by(Tag.name).all()
+    subject_tags = Tag.query.filter_by(tag_type="subject").order_by(Tag.name).all()
 
-from flask import Flask, render_template, request, redirect
+    return render_template(
+        "tags.html",
+        category_tags=category_tags,
+        subject_tags=subject_tags
+    )
 
-# --- 既存の app, load_data, save_data はそのまま ---
+@app.route("/tags/add", methods=["POST"])
+@login_required
+def add_tag():
+    name = request.form.get("name").strip()
+    tag_type = request.form.get("tag_type")
 
+    if not name or not tag_type:
+        flash("タグ名と種類は必須です")
+        return redirect(request.referrer)
+
+    existing = Tag.query.filter_by(name=name, tag_type=tag_type).first()
+    if existing:
+        flash("そのタグは既に存在します")
+        return redirect(request.referrer)
+
+    tag = Tag(name=name, tag_type=tag_type)
+
+    db.session.add(tag)
+    db.session.commit()
+    return redirect(request.referrer)
+
+@app.route("/tags/delete/<int:tag_id>", methods=["POST"])
+@login_required
+def delete_tag(tag_id):
+    tag = Tag.query.get_or_404(tag_id)
+    db.session.delete(tag)
+    db.session.commit()
+    return redirect(request.referrer)
+
+
+
+# 検索機能
 @app.route("/search", methods=["GET"])
 @login_required
 def search():
@@ -189,7 +216,12 @@ def search():
                 StudyLog.date == datetime.strptime(date_str, "%Y-%m-%d").date()
             )
     if keyword:
-            query = query.filter(StudyLog.text.contains(keyword))
+       query = query.filter(
+        or_(
+            StudyLog.title.contains(keyword),
+            StudyLog.text.contains(keyword)
+        )
+      )
 
     if tag_name:
             query = query.join(StudyLog.tags).filter(Tag.name == tag_name)
@@ -198,6 +230,7 @@ def search():
 
     return render_template("search.html", results=pagination.items, pagination=pagination)
 
+# 削除機能
 @app.route("/delete/<int:log_id>", methods=["POST"])
 @login_required
 def delete(log_id):
@@ -211,12 +244,23 @@ def delete(log_id):
         date=request.args.get("date"),
     ))
 
+# 編集機能
 @app.route("/edit/<int:log_id>")
 @login_required
 def edit(log_id):
     log = StudyLog.query.get_or_404(log_id)
-    return render_template("edit.html", entry=log)
+    category_tags = Tag.query.filter_by(tag_type="category").order_by(Tag.name).all()
+    subject_tags = Tag.query.filter_by(tag_type="subject").order_by(Tag.name).all()
 
+    return render_template(
+    "edit.html",
+    entry=log,
+    category_tags=category_tags,
+    subject_tags=subject_tags
+)
+
+
+# 更新処理
 @app.route("/update/<int:log_id>", methods=["POST"])
 @login_required
 def update(log_id):
@@ -230,11 +274,18 @@ def update(log_id):
     if text:   
        log.text = text
 
-    
+    tag_ids = request.form.getlist("tags")
+    log.tags.clear()   # ★一度全解除
+
+    for tag_id in tag_ids:
+        tag = Tag.query.get(int(tag_id))
+        if tag:
+            log.tags.append(tag)
+
     db.session.commit()
     return redirect("/search")
 
-
+# 初回管理者ユーザ作成
 def create_admin_user():
     if User.query.count() == 0:
         username = os.environ.get("ADMIN_USERNAME", "admin")      # デフォルト値を用意

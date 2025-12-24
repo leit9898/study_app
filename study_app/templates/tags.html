@@ -1,0 +1,49 @@
+<h2>タグ管理</h2>
+
+<a href="/">← 記録ページに戻る</a>
+<hr>
+
+<form method="POST" action="{{ url_for('add_tag') }}">
+    <input type="text" name="name" placeholder="タグ名" required>
+
+    <select name="tag_type" required>
+        <option value="category">カテゴリ</option>
+        <option value="subject">科目</option>
+    </select>
+
+    <button type="submit">追加</button>
+</form>
+
+<h3>カテゴリタグ一覧</h3>
+<ul>
+{% for tag in category_tags %}
+  <li>
+    {{ tag.name }}
+    <form action="/tags/delete/{{ tag.id }}" method="post" style="display:inline;">
+      <button type="submit">×</button>
+    </form>
+  </li>
+{% endfor %}
+
+<h3>科目タグ一覧</h3>
+<ul>
+{% for tag in subject_tags %}
+  <li>
+    {{ tag.name }}
+    <form action="{{ url_for('delete_tag', tag_id=tag.id) }}" method="post" style="display:inline;">
+      <button type="submit">×</button>
+    </form>
+  </li>
+{% endfor %}
+</ul>
+
+<ul>
+{% for tag in tags %}
+  <li>
+    {{ tag.name }}
+    <form action="/tags/delete/{{ tag.id }}" method="post" style="display:inline;">
+      <button type="submit">×</button>
+    </form>
+  </li>
+{% endfor %}
+</ul>

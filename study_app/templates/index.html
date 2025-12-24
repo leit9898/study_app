@@ -8,10 +8,34 @@
     <h1>学習記録</h1>
 
     <form method="POST">
-        <textarea name="content" rows="5" cols="40" placeholder="今日の学習内容を入力"></textarea><br>
-        <input type="text" name="tags" placeholder="タグ（カンマ区切り）"><br>
+        <input type="text" name="title" placeholder="タイトル" required><br>
+        <textarea name="content" rows="5" cols="40" placeholder="今日の学習内容を入力"></textarea>
+        <h4>カテゴリ</h4>
+    {% for tag in category_tags %}
+      <label>
+        <input type="checkbox" name="tags" value="{{ tag.id }}">
+        {{ tag.name }}
+      </label>
+    {% endfor %}
+
+    <h4>科目</h4>
+    {% for tag in subject_tags %}
+      <label>
+        <input type="checkbox" name="tags" value="{{ tag.id }}">
+        {{ tag.name }}
+      </label>
+    {% endfor %}
+
         <button type="submit">保存</button>
     </form>
+
+    <hr>
+
+<form action="/tags/add" method="post">
+    <a href="{{ url_for('tag_manage') }}">タグ管理へ</a>
+
+</form>
+
 
 <h2>忘却防止：復習すべき記録</h2>
 
@@ -63,25 +87,6 @@
     <p>該当なし</p>
 {% endif %}
 
-<h2>記録一覧</h2>
-{% for item in logs %}
-    <p>{{ item.date }} : {{ item.text }}</p>
-    <p>タグ: 
-        {% for tag in item.tags %}
-            {{ tag.name }}{% if not loop.last %}, {% endif %}
-        {% endfor %}
-    <hr>
-{% endfor %}
-
-<div>
-{% if pagination.has_prev %}
-  <a href="?page={{ pagination.prev_num }}">前</a>
-{% endif %}
-
-{% if pagination.has_next %}
-  <a href="?page={{ pagination.next_num }}">次</a>
-{% endif %}
-</div>
 
 <a href="/search">検索ページへ</a>
 <p><a href="{{ url_for('logout') }}">ログアウト</a></p>

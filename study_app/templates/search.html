@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html>
-<head><title>記録検索</title></head>
+<head><title>記録管理</title></head>
 <body><p><a href="/">← 記録ページに戻る</a></p>
-<h1>記録検索</h1>
+<h1>記録管理</h1>
 
 <form method="get"action="{{ url_for('search') }}">
     <label>日付：</label>
@@ -22,24 +22,30 @@
 <hr>
 
 <h2>検索結果</h2>
-{% for r in results %}
-  <p>
-    {{ r.date }} : {{ r.text }}
-    <br>タグ:
-    {% for tag in r.tags %}
-       <span style="background:#ddd; padding:2px 6px;"></span>
-        {{ tag.name }}
-       </span>
-    {% endfor %}
-  </p>
+{% for log in results %}
+  <h3>{{ log.title }}</h3>
+  <p>{{ log.text }}</p>
+  <small>{{ log.date }}</small>
 
-  <form action="/delete/{{ r.id }}" method="post" style="display:inline;">
+  {% if log.tags %}
+    <div>
+      {% for tag in log.tags %}
+        <span class="tags"> {{ tag.name }}</span>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+
+  <form action="/delete/{{ log.id }}" method="post" style="display:inline;">
     <button type="submit">削除</button>
   </form>
 
-  <a href="/edit/{{ r.id }}">編集</a>
+  <a href="/edit/{{ log.id }}">編集</a>
   <hr>
+
 {% endfor %}
+
+
 
 <div>
 {% if pagination.has_prev %}
