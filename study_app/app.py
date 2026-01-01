@@ -12,6 +12,9 @@ from flask_login import (
 from werkzeug.security import (check_password_hash, generate_password_hash)
 from flask import Flask, render_template, request, redirect
 from sqlalchemy import or_
+from flask_migrate import Migrate
+from flask_wtf.csrf import CSRFProtect
+
 
 
 
@@ -24,6 +27,8 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
+csrf = CSRFProtect(app)
 
 
 class User(db.Model, UserMixin):
@@ -47,6 +52,11 @@ class Tag(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(30), unique=True, nullable=False)
     tag_type = db.Column(db.String(20), nullable=False) 
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        db.UniqueConstraint("name", "tag_type", name="uix_name_tag_type"),
+    )
 
 
 class StudyLog(db.Model):
@@ -132,9 +142,6 @@ def index():
 
             db.session.add(log)
             db.session.commit()
-  
-    category_tags = Tag.query.filter_by(tag_type="category").order_by(Tag.name).all()
-    subject_tags = Tag.query.filter_by(tag_type="subject").order_by(Tag.name).all()
 
 
     today = date.today()
@@ -148,8 +155,8 @@ def index():
 
     return render_template(
         "index.html",
-        category_tags=category_tags,
-        subject_tags=subject_tags,
+        category_tags=get_tags("category"),
+        subject_tags=get_tags("subject"),
         forget_1=forget_1,
         forget_3=forget_3,
         forget_7=forget_7,
@@ -157,17 +164,27 @@ def index():
     )
 
 # タグ管理
+
+def get_tags(tag_type):
+    return (
+        Tag.query
+        .filter_by(tag_type=tag_type)
+        .order_by(Tag.sort_order, Tag.name)
+        .all()
+    )
+
 @app.route("/tags")
 @login_required
 def tag_manage():
-    category_tags = Tag.query.filter_by(tag_type="category").order_by(Tag.name).all()
-    subject_tags = Tag.query.filter_by(tag_type="subject").order_by(Tag.name).all()
+    category_tags = get_tags("category")
+    subject_tags = get_tags("subject")
 
     return render_template(
         "tags.html",
         category_tags=category_tags,
         subject_tags=subject_tags
     )
+
 
 @app.route("/tags/add", methods=["POST"])
 @login_required
@@ -184,7 +201,17 @@ def add_tag():
         flash("そのタグは既に存在します")
         return redirect(request.referrer)
 
-    tag = Tag(name=name, tag_type=tag_type)
+    max_order = (
+    db.session.query(db.func.max(Tag.sort_order))
+    .filter_by(tag_type=tag_type)
+    .scalar()
+)
+
+    tag = Tag(
+    name=name,
+    tag_type=tag_type,
+    sort_order=(max_order or 0) + 1
+)
 
     db.session.add(tag)
     db.session.commit()
@@ -198,6 +225,37 @@ def delete_tag(tag_id):
     db.session.commit()
     return redirect(request.referrer)
 
+@app.route("/tags/move/<int:tag_id>/<direction>", methods=["POST"])
+@login_required
+def move_tag(tag_id, direction):
+    tag = Tag.query.get_or_404(tag_id)
+
+    if direction == "up":
+        target = (
+            Tag.query
+            .filter(
+                Tag.tag_type == tag.tag_type,
+                Tag.sort_order < tag.sort_order
+            )
+            .order_by(Tag.sort_order.desc())
+            .first()
+        )
+    else:
+        target = (
+            Tag.query
+            .filter(
+                Tag.tag_type == tag.tag_type,
+                Tag.sort_order > tag.sort_order
+            )
+            .order_by(Tag.sort_order)
+            .first()
+        )
+
+    if target:
+        tag.sort_order, target.sort_order = target.sort_order, tag.sort_order
+        db.session.commit()
+
+    return redirect(url_for("tag_manage"))
 
 
 # 検索機能
@@ -249,14 +307,13 @@ def delete(log_id):
 @login_required
 def edit(log_id):
     log = StudyLog.query.get_or_404(log_id)
-    category_tags = Tag.query.filter_by(tag_type="category").order_by(Tag.name).all()
-    subject_tags = Tag.query.filter_by(tag_type="subject").order_by(Tag.name).all()
+
 
     return render_template(
     "edit.html",
     entry=log,
-    category_tags=category_tags,
-    subject_tags=subject_tags
+    category_tags=get_tags("category"),
+    subject_tags=get_tags("subject")
 )
 
 
@@ -268,11 +325,25 @@ def update(log_id):
 
     date_str = request.form.get("date")
     text = request.form.get("text")
+    title = request.form.get("title")
 
     if date_str:
        log.date = datetime.strptime(date_str, "%Y-%m-%d").date()
+
     if text:   
        log.text = text
+
+    if title:
+       log.title = title   
+
+    if not title:
+       flash("タイトルは必須です")
+       return redirect(request.referrer)
+
+    print(request.form) #あとで消す！！！！！！！
+
+
+     # タグ更新処理   
 
     tag_ids = request.form.getlist("tags")
     log.tags.clear()   # ★一度全解除
@@ -285,6 +356,10 @@ def update(log_id):
     db.session.commit()
     return redirect("/search")
 
+
+
+
+
 # 初回管理者ユーザ作成
 def create_admin_user():
     if User.query.count() == 0:
@@ -296,10 +371,6 @@ def create_admin_user():
         db.session.add(admin)
         db.session.commit()
         print(f"Admin user '{username}' を作成しました。")
-
-with app.app_context():
-    db.create_all()
-    create_admin_user()
 
 
 if __name__ == "__main__":

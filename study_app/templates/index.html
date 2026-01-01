@@ -8,7 +8,11 @@
     <h1>学習記録</h1>
 
     <form method="POST">
-        <input type="text" name="title" placeholder="タイトル" required><br>
+　      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <h4>日付</h4>   
+        <input type="date" name="date" value="{{ today }}"><br><br>
+        <h4>タイトル</h4>
+        <input type="text" name="title" placeholder="タイトルを入力"><br><br>
         <textarea name="content" rows="5" cols="40" placeholder="今日の学習内容を入力"></textarea>
         <h4>カテゴリ</h4>
     {% for tag in category_tags %}
@@ -32,6 +36,7 @@
     <hr>
 
 <form action="/tags/add" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <a href="{{ url_for('tag_manage') }}">タグ管理へ</a>
 
 </form>
