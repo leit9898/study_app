@@ -9,25 +9,25 @@ from flask_login import (
     login_required,
     UserMixin
 )
-import datetime
 from werkzeug.security import (check_password_hash, generate_password_hash)
 from sqlalchemy import or_
-from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
 
 
 
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY")
+app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key")
 
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
-    "DATABASE_URL", "sqlite:///logs.db"
-)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "app.db")
+    
+
+app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{DB_PATH}"
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
-migrate = Migrate(app, db)
 csrf = CSRFProtect(app)
 
 
@@ -79,10 +79,6 @@ login_manager.login_view = "login"
 
 # 中間テーブル（多対多）
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "app.db")
-
-app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DB_PATH}"
 
 #ユーザロード
 @login_manager.user_loader
@@ -391,6 +387,11 @@ def create_admin_user():
         db.session.add(admin)
         db.session.commit()
         print(f"Admin user '{username}' を作成しました。")
+
+
+with app.app_context():
+    db.create_all()
+    create_admin_user()
 
 
 if __name__ == "__main__":
