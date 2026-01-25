@@ -1,5 +1,5 @@
 from datetime import date, datetime, timedelta
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 from flask_sqlalchemy import SQLAlchemy
 import os
 from flask_login import (
@@ -9,8 +9,8 @@ from flask_login import (
     login_required,
     UserMixin
 )
+import datetime
 from werkzeug.security import (check_password_hash, generate_password_hash)
-from flask import Flask, render_template, request, redirect
 from sqlalchemy import or_
 from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
@@ -79,6 +79,11 @@ login_manager.login_view = "login"
 
 # 中間テーブル（多対多）
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "app.db")
+
+app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DB_PATH}"
+
 #ユーザロード
 @login_manager.user_loader
 def load_user(user_id):
@@ -116,6 +121,21 @@ def logout():
 @login_required
 def logged_out():
     return render_template("logged_out.html")
+
+@app.route("/admin/export-db")
+@login_required
+def export_db():
+    if not os.path.exists(DB_PATH):
+        return "DB file not found", 404
+
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"backup_{timestamp}.db"
+
+    return send_file(
+        DB_PATH,
+        as_attachment=True,
+        download_name=filename
+    )
 
 # メインページ
 @app.route("/", methods=["GET", "POST"])
